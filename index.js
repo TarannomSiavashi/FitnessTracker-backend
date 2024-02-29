@@ -1,6 +1,7 @@
 const express = require("express");
 const postgres = require("postgres");
 const cors = require("cors");
+require("dotenv").config();
 const app = express();
 
 app.use(express.json());
@@ -55,12 +56,26 @@ getPgVersion();
 
 // GET Requests:
 
+app.get("/user/:id", async (request, response) => {
+  try {
+    const id = +request.params.id;
+    const user =
+      await sql`select id,name,weight,height,birthdate from user_info where id = ${id}`;
+      console.log(user);
+    response.send(user);
+  } catch (error) {
+    console.error("Error finding personal records:", error);
+    response.status(500).send("Internal Server Error");
+  }
+});
+
+
 app.get("/pr/:id", async (request, response) => {
   try {
     const id = +request.params.id;
     const result = await sql`
     SELECT *
-    FROM personal_record
+    FROM personal_records
     where userid = ${id};
   `;
     response.send(result);
@@ -69,6 +84,62 @@ app.get("/pr/:id", async (request, response) => {
     response.status(500).send("Internal Server Error");
   }
 });
+
+// app.get("/record/:id/:prid", async (request, response) => {
+//   try {
+//     const id = +request.params.id;
+//     const prId = +request.params.prid;
+//     //   const result = await sql`
+//     //   SELECT records.*, personal_records.*
+//     //   FROM personal_records
+//     //   LEFT JOIN records ON records.prid = personal_records.prid AND records.prid = ${prId}
+//     //   WHERE personal_records.userid = ${id}
+//     //   ORDER BY records.prdate DESC
+//     //   LIMIT 1;
+//     // `;
+//     const result = await sql`
+//       SELECT records.*, personal_records.*
+//       FROM personal_records
+//       LEFT JOIN records ON records.prid = personal_records.prid
+//                       AND records.prid = ${prId}
+//                       AND personal_records.userid = ${id}
+//       ORDER BY records.prdate DESC
+//       LIMIT 1;
+//     `;
+//     //   const result = await sql`
+//     //   SELECT records.*, personal_records.*
+//     //   FROM personal_records
+//     //   left JOIN records ON records.prid = personal_records.prid
+//     //   where records.prid = ${prId} and personal_records.userid = ${id}
+//     //   ORDER BY records.prdate DESC
+//     //   LIMIT 1;
+//     // `;
+//     response.send(result);
+//     console.log(result);
+//   } catch (error) {
+//     console.error("Error finding personal records:", error);
+//     response.status(500).send("Internal Server Error");
+//   }
+// });
+
+// app.get("/records/:id/:prid", async (request, response) => {
+//   try {
+//     const id = +request.params.id;
+//     const prId = +request.params.prid;
+//     const result = await sql`
+//       SELECT records.*, personal_record.*
+//       FROM records
+//       left JOIN personal_record ON records.prid = personal_record.prid
+//       where records.prid = ${prId} and personal_record.userid = ${id}
+//       ORDER BY records.prdate DESC;
+//     `;
+//     response.send(result);
+//   } catch (error) {
+//     console.error("Error finding personal records:", error);
+//     response.status(500).send("Internal Server Error");
+//   }
+// });
+
 
 app.get("/record/:id/:prid", async (request, response) => {
   try {
@@ -107,6 +178,8 @@ app.get("/records/:id/:prid", async (request, response) => {
   }
 });
 
+
+
 // POST Requests:
 
 app.post("/login", async (request, response) => {
@@ -116,7 +189,7 @@ app.post("/login", async (request, response) => {
     console.log(password);
 
     const foundUser =
-      await sql`select id,name,weight,height,birthdate from user_info where name = ${username} and password = ${password}`;
+      await sql`select id from user_info where name = ${username} and password = ${password}`;
 
     if (foundUser && foundUser.length > 0) {
       // response.status(200).json(foundUser);
@@ -148,6 +221,21 @@ app.post("/newRecord", async (request, response) => {
   }
 });
 
+app.post("/newCategory", async (request, response) => {
+  const { userid, title, unit } = request.body;
+  try {
+    const insertResult = await sql`
+        INSERT INTO personal_records (userid, title, unit)
+        VALUES (${userid}, ${title}, ${unit})
+        RETURNING *
+    `;
+    response.status(201).json(insertResult[0]);
+  } catch (error) {
+    console.error("Error creating Category:", error);
+    response.status(500).send("Internal Server Error");
+  }
+});
+
 // PUT Requests:
 
 app.put("/edit/:id", async (request, response) => {
@@ -168,6 +256,7 @@ app.put("/edit/:id", async (request, response) => {
             birthdate = ${user.birthdate}
         WHERE id = ${userId}
     `;
+    response.send("Successful update");
   } catch (error) {
     console.error("Error updating User:", error);
     response.status(500).send("Internal Server Error");
