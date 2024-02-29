@@ -5,16 +5,13 @@ const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
 app.use(
   cors({
-    origin: "http://localhost:5173/",
-    methods: ["Get", "POST"],
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST", "PUT"],
   })
 );
-// const allowedOrigins = ['http://localhost:5173'];
-// app.use(cors({
-//   origin: allowedOrigins
-// }));
 
 // app.use(function (_, res, next) {
 //     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -23,6 +20,7 @@ app.use(
 //     res.setHeader('Access-Control-Allow-Credentials', true);
 //     next();
 // });
+
 const port = 3000;
 
 // app.js
@@ -55,15 +53,61 @@ async function getPgVersion() {
 
 getPgVersion();
 
-app.get("/records", async (request, response) => {
+// GET Requests:
+
+app.get("/pr/:id", async (request, response) => {
   try {
-    result = await sql`select * from records`;
+    const id = +request.params.id;
+    const result = await sql`
+    SELECT *
+    FROM personal_record
+    where userid = ${id};
+  `;
     response.send(result);
   } catch (error) {
-    console.error("Error deleting task:", error);
+    console.error("Error finding personal records:", error);
     response.status(500).send("Internal Server Error");
   }
 });
+
+app.get("/record/:id/:prid", async (request, response) => {
+  try {
+    const id = +request.params.id;
+    const prId = +request.params.prid;
+    const result = await sql`
+    SELECT records.*, personal_record.*
+    FROM records
+    INNER JOIN personal_record ON records.prid = personal_record.prid
+    where records.prid = ${prId} and personal_record.userid = ${id}
+    ORDER BY records.prdate DESC
+    LIMIT 1;
+  `;
+    response.send(result);
+  } catch (error) {
+    console.error("Error finding personal records:", error);
+    response.status(500).send("Internal Server Error");
+  }
+});
+
+app.get("/records/:id/:prid", async (request, response) => {
+  try {
+    const id = +request.params.id;
+    const prId = +request.params.prid;
+    const result = await sql`
+    SELECT records.*, personal_record.*
+    FROM records
+    INNER JOIN personal_record ON records.prid = personal_record.prid
+    where records.prid = ${prId} and personal_record.userid = ${id}
+    ORDER BY records.prdate DESC;
+  `;
+    response.send(result);
+  } catch (error) {
+    console.error("Error finding personal records:", error);
+    response.status(500).send("Internal Server Error");
+  }
+});
+
+// POST Requests:
 
 app.post("/login", async (request, response) => {
   const { username, password } = request.body;
@@ -72,38 +116,61 @@ app.post("/login", async (request, response) => {
     console.log(password);
 
     const foundUser =
-      await sql`select * from user_info where name = ${username} and password = ${password}`;
+      await sql`select id,name,weight,height,birthdate from user_info where name = ${username} and password = ${password}`;
+
     if (foundUser && foundUser.length > 0) {
+      // response.status(200).json(foundUser);
       response.send(foundUser);
-      console.log("found");
+      console.log(foundUser);
+      console.log("User found");
+    } else {
+      response.status(401).json({ error: "Invalid username or password" });
+      console.log("User not found");
     }
   } catch (error) {
-    response.send(error);
-    console.log("not found");
+    console.error("Error during login:", error);
+    response.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+app.post("/newRecord", async (request, response) => {
+  const { prid, prdate, metric, note } = request.body;
+  try {
+    const insertResult = await sql`
+        INSERT INTO records (prid, prdate, metric, note)
+        VALUES (${prid}, ${prdate}, ${metric}, ${note})
+        RETURNING *
+    `;
+    response.status(201).json(insertResult[0]);
+  } catch (error) {
+    console.error("Error creating record:", error);
+    response.status(500).send("Internal Server Error");
+  }
+});
+
+// PUT Requests:
 
 app.put("/edit/:id", async (request, response) => {
   try {
     const userId = +request.params.id;
-    const user = request.body
-    const existingUser = await sql`SELECT * FROM user_info WHERE id = ${userId}`;
+    const user = request.body;
+    const existingUser =
+      await sql`SELECT * FROM user_info WHERE id = ${userId}`;
     if (existingUser.length === 0) {
-        response.status(404).send('User not found');
-        return;
+      response.status(404).send("User not found");
+      return;
     }
-
     const updateResult = await sql`
         UPDATE user_info
-        SET  name = ${user.name}
-            weight = ${user.weight}
-            height = ${user.height}
+        SET  name = ${user.name},
+            weight = ${user.weight},
+            height = ${user.height},
             birthdate = ${user.birthdate}
         WHERE id = ${userId}
     `;
   } catch (error) {
-    console.error('Error updating User:', error);
-    response.status(500).send('Internal Server Error');
+    console.error("Error updating User:", error);
+    response.status(500).send("Internal Server Error");
   }
 });
 
