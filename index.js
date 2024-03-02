@@ -1,18 +1,49 @@
-const express = require("express");
-const postgres = require("postgres");
-const cors = require("cors");
-require("dotenv").config();
+const http = require('http');
+const express = require('express');
+const socketIO = require('socket.io');
+const postgres = require('postgres');
+const cors = require('cors');
+require('dotenv').config();
+
+
+const port = process.env.PORT || 3000;
+const corsOrigin = process.env.CORS_ORIGIN || "http://localhost:5173";
+const corsMethods = process.env.CORS_METHODS || "GET,POST,PUT";
+
 const app = express();
+const server = http.createServer(app);
+const httpServer = app.listen(port, () => {console.log(`Server listening on port ${port}`)});
+const { Server } = require("socket.io");
+// const io = new Server(server, {
+//     cors: {
+//       origin: "http://localhost:5173",
+//       methods: ["GET", "POST", "PUT"],
+//     }
+  
+// } );
+
+// server.listen(port, ()=>{
+//   console.log("Server is listening");
+// });
+// const server = http.createServer(app);
+const io = socketIO(server);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(
   cors({
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST", "PUT"],
+    origin: corsOrigin,
+    methods: corsMethods.split(","),
   })
 );
+
+// app.use(
+//   cors({
+//     origin: "http://localhost:5173",
+//     methods: ["GET", "POST", "PUT"],
+//   })
+// );
 
 // app.use(function (_, res, next) {
 //     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -22,7 +53,7 @@ app.use(
 //     next();
 // });
 
-const port = 3000;
+// const port = 3000;
 
 // app.js
 // const postgres = require('postgres');
@@ -53,21 +84,33 @@ const port = 3000;
 
 // let { PGHOST, PGDATABASE, PGUSER, PGPASSWORD, ENDPOINT_ID } = process.env;
 
-PGHOST = "ep-shiny-snow-a5owxvou.us-east-2.aws.neon.tech";
-PGDATABASE = "FitnessTracker";
-PGUSER = "tarannomsiavashy";
-PGPASSWORD = "jTf7ROv9rgZx";
-ENDPOINT_ID = "ep-shiny-snow-a5owxvou";
+// PGHOST = "ep-shiny-snow-a5owxvou.us-east-2.aws.neon.tech";
+// PGDATABASE = "FitnessTracker";
+// PGUSER = "tarannomsiavashy";
+// PGPASSWORD = "jTf7ROv9rgZx";
+// ENDPOINT_ID = "ep-shiny-snow-a5owxvou";
+
+// const sql = postgres({
+//   host: PGHOST,
+//   database: PGDATABASE,
+//   username: PGUSER,
+//   password: PGPASSWORD,
+//   port: 5432,
+//   ssl: "require",
+//   connection: {
+//     options: `project=${ENDPOINT_ID}`,
+//   },
+// });
 
 const sql = postgres({
-  host: PGHOST,
-  database: PGDATABASE,
-  username: PGUSER,
-  password: PGPASSWORD,
+  host: process.env.PGHOST, 
+  database: process.env.PGDATABASE,
+  username: process.env.PGUSER,
+  password: process.env.PGPASSWORD,
   port: 5432,
   ssl: "require",
   connection: {
-    options: `project=${ENDPOINT_ID}`,
+    options: `project=${process.env.ENDPOINT_ID}`,
   },
 });
 
@@ -78,12 +121,6 @@ async function getPgVersion() {
 
 getPgVersion();
 
-async function getPgVersion() {
-  const result = await sql`select version()`;
-  console.log(result);
-}
-
-getPgVersion();
 
 // GET Requests:
 
@@ -92,7 +129,6 @@ app.get("/user/:id", async (request, response) => {
     const id = +request.params.id;
     const user =
       await sql`select id,name,weight,height,birthdate from userinfo where id = ${id}`;
-    console.log(user);
     response.send(user);
   } catch (error) {
     console.error("Error finding user:", error);
@@ -167,6 +203,23 @@ app.get("/dailys/:id", async (request, response) => {
   }
 });
 
+app.get("/daily/:id/:dayid", async (request, response) => {
+  try {
+    const id = +request.params.id;
+    const dayid = +request.params.dayid;
+
+    const result = await sql`
+    SELECT *
+    FROM daily_goal
+    where userid = ${id} and dayid = ${dayid};
+  `;
+    response.send(result);
+  } catch (error) {
+    console.error("Error finding dayily goal:", error);
+    response.status(500).send("Internal Server Error");
+  }
+});
+
 app.get("/monthlys/:id", async (request, response) => {
   try {
     const id = +request.params.id;
@@ -181,6 +234,25 @@ app.get("/monthlys/:id", async (request, response) => {
     response.status(500).send("Internal Server Error");
   }
 });
+
+app.get("/monthlys/:id/:monthid", async (request, response) => {
+  try {
+    const id = +request.params.id;
+    const monthid = +request.params.monthid;
+
+    const result = await sql`
+    SELECT *
+    FROM monthly_goal
+    where userid = ${id} and monthid = ${monthid};
+  `;
+    response.send(result);
+  } catch (error) {
+    console.error("Error finding monthly goal:", error);
+    response.status(500).send("Internal Server Error");
+  }
+});
+
+
 
 app.get("/monthday/:id/:monthid", async (request, response) => {
   try {
@@ -206,20 +278,13 @@ app.get("/monthday/:id/:monthid", async (request, response) => {
 app.post("/login", async (request, response) => {
   const { username, password } = request.body;
   try {
-    console.log(username);
-    console.log(password);
-
     const foundUser =
       await sql`select id from userinfo where name = ${username} and password = ${password}`;
 
     if (foundUser && foundUser.length > 0) {
-      // response.status(200).json(foundUser);
       response.send(foundUser);
-      console.log(foundUser);
-      console.log("User found");
     } else {
       response.status(401).json({ error: "Invalid username or password" });
-      console.log("User not found");
     }
   } catch (error) {
     console.error("Error during login:", error);
@@ -258,11 +323,11 @@ app.post("/newCategory", async (request, response) => {
 });
 
 app.post("/newDaily", async (request, response) => {
-  const { dayid, title, desc, metric, alarm, userid, status } = request.body;
+  const { title, desc, metric, alarm, userid, status } = request.body;
   try {
     const insertResult = await sql`
-        INSERT INTO daily_goal (dayid, title, description, metric, alarmtime, userid, status)
-        VALUES (${dayid}, ${title}, ${desc}, ${metric}, ${alarm}, ${userid}, ${status})
+        INSERT INTO daily_goal (title, description, metric, alarmtime, userid, status)
+        VALUES (${title}, ${desc}, ${metric}, ${alarm}, ${userid}, ${status})
         RETURNING *
     `;
     response.status(201).json(insertResult[0]);
@@ -273,12 +338,12 @@ app.post("/newDaily", async (request, response) => {
 });
 
 app.post("/newMonthly", async (request, response) => {
-  const { monthid, title, desc, start, end, userid } = request.body;
+  const {title, desc, start, end, userid } = request.body;
   const status = false;
   try {
     const insertResult = await sql`
-        INSERT INTO monthly_goal (monthid, title, description, startdate, deadline, userid, status)
-        VALUES (${monthid}, ${title}, ${desc}, ${start}, ${end}, ${userid}, ${status})
+        INSERT INTO monthly_goal (title, description, startdate, deadline, userid, status)
+        VALUES (${title}, ${desc}, ${start}, ${end}, ${userid}, ${status})
         RETURNING *
     `;
     response.status(201).json(insertResult[0]);
@@ -322,7 +387,8 @@ app.put("/edit/:id", async (request, response) => {
             birthdate = ${user.birthdate}
         WHERE id = ${userId}
     `;
-    response.send("Successful update");
+    // response.status(200).send("Successful update");
+    response.status(200).json({ message: "Successful update" });
   } catch (error) {
     console.error("Error updating User:", error);
     response.status(500).send("Internal Server Error");
@@ -381,6 +447,47 @@ app.put('/monthly/done/:id/:monthid', async (request, response) => {
   }
 });
 
-app.listen(port, () =>
-  console.log(`My app listening at http://localhost:${port}`)
-);
+// app.listen(port, () =>
+//   console.log(`My app listening at http://localhost:${port}`)
+// );
+
+
+
+io.on('connection', (socket) => {
+  console.log('A client connected');
+
+  // Check for daily goals with alarm times
+  // setInterval(async () => {
+  //   try {
+  //     const currentDate = new Date().toLocaleTimeString([], { hour12: false });
+  //     console.log(currentDate);
+  //     const dailyGoals = await sql`
+  //       SELECT dayid, alarmtime
+  //       FROM daily_goal
+  //       WHERE alarmtime = ${currentDate}`;
+      
+  //     if (dailyGoals.length > 0) {
+  //       socket.emit('notification', 'Daily goal alarm time reached!');
+  //     }
+  //   } catch (error) {
+  //     console.error('Error checking daily goals:', error);
+  //   }
+  // }, 60000); // Check every minute for alarm times
+
+  // Cleanup on disconnection
+  socket.on('disconnect', () => {
+    console.log('A client disconnected');
+  });
+});
+
+// Start the server
+// const newPort = process.env.PORT || 3000;
+// const newP = 3001;
+// server.listen(port, () => {
+//   console.log(`Server listening on port ${port}`);
+// });
+
+
+// const httpServer = app.listen(port, () => {console.log(`Server listening on port ${port}`)});
+// const { Server } = require("socket.io");
+// const io = new Server(httpServer );
